@@ -236,7 +236,7 @@ func TestErrorHasNoValue(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = c.Put(ctx(t), protocol.StatePutParams{Collection: "relay", Key: "config", Value: raw(map[string]string{"tokenHash": canary}), ExpectedVersion: str("stale")})
-	if !protocol.Is(err, protocol.Conflict) || strings.Contains(err.Error(), canary) {
+	if !protocol.Is(err, protocol.Conflict) || strings.Contains(err.Error(), canary) || !strings.Contains(err.Error(), "relay / config") {
 		t.Fatalf("conflict: %v", err)
 	}
 	_, err = c.Put(ctx(t), protocol.StatePutParams{Collection: "relay", Key: "../config", Value: raw(canary), ExpectedVersion: &r.Version})

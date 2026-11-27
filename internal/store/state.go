@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"reflect"
@@ -19,7 +20,7 @@ import (
 // message names the collection and the key, never the value.
 func (s *Store) readDoc(collection, key string) (*files.Doc, error) {
 	d, err := files.ReadDoc(files.DocPath(s.stateRoot(), collection, key))
-	if err != nil {
+	if err != nil || (d != nil && d.Key != key) {
 		return nil, unavailable("The plugin cannot read the document %s / %s. Correct or remove its file in the data folder.", collection, key)
 	}
 	return d, nil
@@ -48,7 +49,7 @@ func (s *Store) Put(ctx context.Context, p protocol.StatePutParams) (protocol.St
 		return protocol.StatePutResult{}, err
 	}
 	if err := checkVersion(cur, p.ExpectedVersion); err != nil {
-		return protocol.StatePutResult{}, err
+		return protocol.StatePutResult{}, named(err, p.Collection, p.Key)
 	}
 	d, err := files.WriteDoc(s.stateRoot(), p.Collection, p.Key, p.Value, p.Attributes)
 	if err != nil {
@@ -74,6 +75,15 @@ func checkVersion(cur *files.Doc, expected *string) error {
 	return protocol.ConflictError(stored)
 }
 
+// named gives a conflict error a message that names the document, never its
+// value.
+func named(err error, collection, key string) error {
+	if e, ok := err.(*protocol.Error); ok {
+		e.Message = fmt.Sprintf("The document %s / %s has another version than the expected one. Read it again, then retry.", collection, key)
+	}
+	return err
+}
+
 // Delete removes a document with the expected version.
 func (s *Store) Delete(ctx context.Context, p protocol.StateDeleteParams) (protocol.StateDeleteResult, error) {
 	unlock, err := s.collectionLock(p.Collection)
@@ -90,7 +100,7 @@ func (s *Store) Delete(ctx context.Context, p protocol.StateDeleteParams) (proto
 	}
 	expected := p.ExpectedVersion
 	if err := checkVersion(cur, &expected); err != nil {
-		return protocol.StateDeleteResult{}, err
+		return protocol.StateDeleteResult{}, named(err, p.Collection, p.Key)
 	}
 	path := files.DocPath(s.stateRoot(), p.Collection, p.Key)
 	if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {

@@ -182,3 +182,42 @@ func TestNamesKeepCase(t *testing.T) {
 		t.Fatalf("list %d items, want 5", len(l.Items))
 	}
 }
+
+// A long key and a key that is the long key's hashed file name are two
+// documents (review round 1).
+func TestHashedNameNoCollision(t *testing.T) {
+	s, _ := open(t, t.TempDir())
+	long := strings.Repeat("A", 200)
+	hashed := files.FileName(long)
+	if !strings.HasPrefix(hashed, "%h") {
+		t.Fatalf("hashed name %q", hashed)
+	}
+	// The other key that looks most like the hashed form: "h" + the same hex.
+	other := strings.TrimPrefix(hashed, "%")
+	put(t, s, "specs", long, "long", nil, nil)
+	put(t, s, "specs", other, "other", nil, nil)
+	for key, want := range map[string]string{long: `"long"`, other: `"other"`} {
+		got, err := s.Get(ctx(t), protocol.StateGetParams{Collection: "specs", Key: key})
+		if err != nil || string(got.Value) != want {
+			t.Fatalf("%s: %s %v", key[:8], got.Value, err)
+		}
+	}
+}
+
+// A failed Open for a test host does not leave a temporary folder to remove
+// at a later Close of a real folder (review round 1).
+func TestFailedTestOpenThenRealOpen(t *testing.T) {
+	s := New()
+	// The state that a test-host Open leaves when it fails after it made its
+	// temporary folder.
+	s.temp, s.dir = true, t.TempDir()
+	real := t.TempDir()
+	os.WriteFile(filepath.Join(real, "keep"), []byte("x"), 0o600)
+	if err := s.Open(ctx(t), plugin.OpenOptions{Settings: map[string]string{SettingDataDir: real}, Host: protocol.Host{Kind: "relay"}, Log: slog.New(slog.DiscardHandler)}); err != nil {
+		t.Fatal(err)
+	}
+	s.Close(context.Background())
+	if _, err := os.Stat(filepath.Join(real, "keep")); err != nil {
+		t.Fatalf("Close removed the real data folder: %v", err)
+	}
+}
