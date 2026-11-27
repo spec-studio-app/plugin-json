@@ -90,7 +90,8 @@ func dataDirError(dir string) error {
 // Open finds the data folder, checks that it takes a write, imports the
 // relay's old JSON store when the folder has one, and removes the temporary
 // files that a crash left.
-func (s *Store) Open(ctx context.Context, o plugin.OpenOptions) error {
+func (s *Store) Open(ctx context.Context, o plugin.OpenOptions) (err error) {
+	s.temp, s.dir = false, ""
 	s.log = o.Log
 	if s.log == nil {
 		s.log = slog.New(slog.NewTextHandler(os.Stderr, nil))
@@ -109,6 +110,12 @@ func (s *Store) Open(ctx context.Context, o plugin.OpenOptions) error {
 			return protocol.NewError(protocol.Unavailable, "The plugin cannot make a temporary data folder for the test host. Set data_dir.")
 		}
 		dir, s.temp = d, true
+		defer func() {
+			if err != nil {
+				os.RemoveAll(d)
+				s.temp, s.dir = false, ""
+			}
+		}()
 	}
 	abs, err := filepath.Abs(dir)
 	if err != nil {
