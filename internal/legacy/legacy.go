@@ -56,6 +56,15 @@ var Now = time.Now
 // Getenv reads the environment (tests set it).
 var Getenv = os.Getenv
 
+// RelayDeployID is the relay's deploy ID, with the relay's own rule:
+// DEPLOY_ID with no space around it, or "default" when it is empty.
+func RelayDeployID() string {
+	if v := strings.TrimSpace(Getenv("DEPLOY_ID")); v != "" {
+		return v
+	}
+	return "default"
+}
+
 // HasOld is true when the data folder has a file or a folder of the old store.
 func HasOld(dir string) bool {
 	for _, name := range oldNames {
@@ -366,11 +375,20 @@ func jsonFiles(dir string) ([]string, error) {
 
 func readOld(dir string) ([]doc, int, error) {
 	var docs []doc
-	// The relay loads the files of its DEPLOY_ID. A relay starts the plugin as
-	// its child, so the plugin has the relay's environment. With no
-	// DEPLOY_ID, the deploy ID of config.json applies (it is the one of the
-	// relay's first start).
-	deployID := Getenv("DEPLOY_ID")
+	// The relay loads the files of its own deploy ID: DEPLOY_ID, trimmed, or
+	// "default" (src/config.ts). A relay starts the plugin as its child, so the
+	// plugin has the relay's environment.
+	deployID := RelayDeployID()
+
+	// Each old file must be readable, else the backup cannot copy it. A file
+	// that does not parse is another case, below.
+	for _, name := range []string{oldConfig, oldPairCode, oldClosed} {
+		if f, err := os.Open(filepath.Join(dir, name)); err == nil {
+			f.Close()
+		} else if !errors.Is(err, fs.ErrNotExist) {
+			return nil, 0, badFile(name, "the plugin cannot read it")
+		}
+	}
 
 	// relay / config, with a pair-code.json that the relay did not take yet.
 	if data, err := os.ReadFile(filepath.Join(dir, oldConfig)); err == nil {
@@ -379,9 +397,6 @@ func readOld(dir string) ([]doc, int, error) {
 		if json.Unmarshal(data, &f) != nil || f.Version != 1 || len(f.State) == 0 ||
 			json.Unmarshal(f.State, &st) != nil || st.Agents == nil {
 			return nil, 0, badFile(oldConfig, "it is not a version-1 relay config file")
-		}
-		if deployID == "" {
-			deployID = st.DeployID
 		}
 		value := compact(data)
 		if pc, err := os.ReadFile(filepath.Join(dir, oldPairCode)); err == nil {
@@ -395,8 +410,6 @@ func readOld(dir string) ([]doc, int, error) {
 				}
 				value = v
 			}
-		} else if !errors.Is(err, fs.ErrNotExist) {
-			return nil, 0, badFile(oldPairCode, "the plugin cannot read it")
 		}
 		docs = append(docs, doc{collection: "relay", key: "config", value: value, attrs: map[string]any{}, from: oldConfig})
 	} else if !errors.Is(err, fs.ErrNotExist) {
@@ -519,7 +532,7 @@ func readOld(dir string) ([]doc, int, error) {
 	}
 
 	// closed-specs / <repoKey>:<slug>. The relay ignores a closed.json that
-	// it cannot read (it only logs), so the import does the same.
+	// does not parse (it only logs), so the import does the same.
 	if data, err := os.ReadFile(filepath.Join(dir, oldClosed)); err == nil {
 		var f closedFile
 		if json.Unmarshal(data, &f) == nil && f.Version == 1 {

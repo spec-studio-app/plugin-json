@@ -42,6 +42,13 @@ func (l *logBuffer) String() string {
 	return l.b.String()
 }
 
+// TestMain gives the tests an environment with no DEPLOY_ID, so a value on
+// the test computer does not change them.
+func TestMain(m *testing.M) {
+	legacy.Getenv = func(string) string { return "" }
+	os.Exit(m.Run())
+}
+
 func ctx(t *testing.T) context.Context {
 	c, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	t.Cleanup(cancel)
@@ -456,7 +463,7 @@ func TestDeployIDFromEnvironment(t *testing.T) {
 		}
 		return ""
 	}
-	t.Cleanup(func() { legacy.Getenv = os.Getenv })
+	t.Cleanup(func() { legacy.Getenv = func(string) string { return "" } })
 	s, _ := mustOpen(t, dir)
 	l, err := s.List(ctx(t), protocol.StateListParams{Collection: "specs"})
 	if err != nil || len(l.Items) != len(specs) {
@@ -485,5 +492,41 @@ func TestUnreadablePairCode(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "layout.json")); err == nil {
 		t.Fatal("the import went on")
+	}
+}
+
+// The deploy ID follows the relay's rule: DEPLOY_ID trimmed, or "default"
+// (review round 3).
+func TestRelayDeployIDRule(t *testing.T) {
+	t.Cleanup(func() { legacy.Getenv = func(string) string { return "" } })
+	for env, want := range map[string]string{"": "default", "   ": "default", " prod ": "prod", "new-id": "new-id"} {
+		legacy.Getenv = func(k string) string {
+			if k == "DEPLOY_ID" {
+				return env
+			}
+			return ""
+		}
+		if got := legacy.RelayDeployID(); got != want {
+			t.Errorf("DEPLOY_ID %q: %q, want %q", env, got, want)
+		}
+	}
+}
+
+// An old file that the plugin cannot read stops the import and names the
+// file, before any change (review round 3).
+func TestUnreadableClosed(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root reads a file with mode 0")
+	}
+	dir := copyFixture(t)
+	p := filepath.Join(dir, "closed.json")
+	os.Chmod(p, 0)
+	t.Cleanup(func() { os.Chmod(p, 0o600) })
+	_, _, err := openStore(dir)
+	if !protocol.Is(err, protocol.Unavailable) || !strings.Contains(err.Error(), "closed.json") {
+		t.Fatalf("error %v", err)
+	}
+	if b, _ := filepath.Glob(filepath.Join(dir, legacy.BackupPrefix+"*")); len(b) != 0 {
+		t.Fatalf("the import made a backup: %v", b)
 	}
 }

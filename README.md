@@ -86,7 +86,7 @@ The relay 0.6 and older keeps its data in its own JSON layout: `config.json`, `p
 
 When the plugin starts on a folder with the old files and with no `layout.json`, it imports the old files one time:
 
-1. It reads and checks each old file. When `config.json`, a spec file or a desk file is not valid, the start stops with `unavailable`. The message names the file. Correct the file or remove it, then start the plugin again. The plugin changes no file in this case. A `closed.json` or a `pair-code.json` that does not parse does not stop the start: the relay ignores these files too, and the import skips them. A `pair-code.json` that the plugin cannot read stops the start, as it stops the relay.
+1. It reads and checks each old file. When `config.json`, a spec file or a desk file is not valid, the start stops with `unavailable`. The message names the file. Correct the file or remove it, then start the plugin again. The plugin changes no file in this case. A `closed.json` or a `pair-code.json` that does not parse does not stop the start: the relay ignores these files too, and the import skips them. An old file that the plugin cannot read (for example, no read access) stops the start, as it stops the relay.
 2. It copies the old files to `backup-relay-json-<time>/` in the data folder.
 3. It writes one document for each old record, with the names in section 14 of `PROTOCOL.md`.
 4. It writes `layout.json`. Then it removes the old files.
@@ -111,7 +111,7 @@ The attributes come from the same rules as in the relay:
 
 The relay writes the attributes again at its next write to each document.
 
-The relay loads only the spec files and desk files of its own deploy ID (`DEPLOY_ID`). The import does the same: it skips the files of another deploy ID. The relay starts the plugin as its child process, so the plugin reads `DEPLOY_ID` from the same environment. When `DEPLOY_ID` is not set (for example in a sidecar), the import uses the deploy ID in `config.json`, which is the deploy ID of the relay's first start. Set `DEPLOY_ID` for a sidecar when the relay has one. When no `config.json` exists and two spec files have the same repo key and slug, the file with the later last activity wins. The log line counts the files and records that the import did not use. They stay in the backup.
+The relay loads only the spec files and desk files of its own deploy ID. The import does the same, with the relay's rule: the deploy ID is `DEPLOY_ID` with no space around it, or `default` when `DEPLOY_ID` is empty. The relay starts the plugin as its child process, so the plugin reads `DEPLOY_ID` from the same environment. For a sidecar, set the same `DEPLOY_ID` as the relay. The import skips the files of another deploy ID. When two spec files of that deploy ID have the same repo key and slug, the file with the later last activity wins. The log line counts the files and records that the import did not use. They stay in the backup.
 
 To go back to an older relay, stop the relay. Then copy the files from the backup folder to the data folder and remove `layout.json` and `state/`.
 
