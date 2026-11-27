@@ -53,6 +53,9 @@ var AfterState func() error
 // Now is the clock of the backup name (tests set it).
 var Now = time.Now
 
+// Getenv reads the environment (tests set it).
+var Getenv = os.Getenv
+
 // HasOld is true when the data folder has a file or a folder of the old store.
 func HasOld(dir string) bool {
 	for _, name := range oldNames {
@@ -363,7 +366,11 @@ func jsonFiles(dir string) ([]string, error) {
 
 func readOld(dir string) ([]doc, int, error) {
 	var docs []doc
-	deployID := ""
+	// The relay loads the files of its DEPLOY_ID. A relay starts the plugin as
+	// its child, so the plugin has the relay's environment. With no
+	// DEPLOY_ID, the deploy ID of config.json applies (it is the one of the
+	// relay's first start).
+	deployID := Getenv("DEPLOY_ID")
 
 	// relay / config, with a pair-code.json that the relay did not take yet.
 	if data, err := os.ReadFile(filepath.Join(dir, oldConfig)); err == nil {
@@ -373,7 +380,9 @@ func readOld(dir string) ([]doc, int, error) {
 			json.Unmarshal(f.State, &st) != nil || st.Agents == nil {
 			return nil, 0, badFile(oldConfig, "it is not a version-1 relay config file")
 		}
-		deployID = st.DeployID
+		if deployID == "" {
+			deployID = st.DeployID
+		}
 		value := compact(data)
 		if pc, err := os.ReadFile(filepath.Join(dir, oldPairCode)); err == nil {
 			var p pairCodeFile
@@ -386,6 +395,8 @@ func readOld(dir string) ([]doc, int, error) {
 				}
 				value = v
 			}
+		} else if !errors.Is(err, fs.ErrNotExist) {
+			return nil, 0, badFile(oldPairCode, "the plugin cannot read it")
 		}
 		docs = append(docs, doc{collection: "relay", key: "config", value: value, attrs: map[string]any{}, from: oldConfig})
 	} else if !errors.Is(err, fs.ErrNotExist) {

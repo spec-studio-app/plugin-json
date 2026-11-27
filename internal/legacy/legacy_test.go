@@ -439,3 +439,51 @@ func TestBadPairCodeIgnored(t *testing.T) {
 		t.Fatalf("the bad pair code was applied: %v", v.State.PairCode)
 	}
 }
+
+// The relay's DEPLOY_ID wins over the deploy ID of config.json: after a
+// change of DEPLOY_ID, the relay's live files are the ones of the new ID
+// (review round 2).
+func TestDeployIDFromEnvironment(t *testing.T) {
+	dir := copyFixture(t)
+	specs, _ := filepath.Glob(filepath.Join(dir, "specs", "*.json"))
+	for _, p := range specs {
+		data, _ := os.ReadFile(p)
+		os.WriteFile(p, []byte(strings.ReplaceAll(string(data), `"deployId":"default"`, `"deployId":"new-id"`)), 0o600)
+	}
+	legacy.Getenv = func(k string) string {
+		if k == "DEPLOY_ID" {
+			return "new-id"
+		}
+		return ""
+	}
+	t.Cleanup(func() { legacy.Getenv = os.Getenv })
+	s, _ := mustOpen(t, dir)
+	l, err := s.List(ctx(t), protocol.StateListParams{Collection: "specs"})
+	if err != nil || len(l.Items) != len(specs) {
+		t.Fatalf("specs %d (%v), want %d", len(l.Items), err, len(specs))
+	}
+	// The desks keep the old ID, so the relay with the new ID has none.
+	d, _ := s.List(ctx(t), protocol.StateListParams{Collection: "desks"})
+	if len(d.Items) != 0 {
+		t.Fatalf("desks %d, want 0", len(d.Items))
+	}
+}
+
+// A pair-code.json that the plugin cannot read stops the import and names
+// the file, as the relay stops (review round 2).
+func TestUnreadablePairCode(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root reads a file with mode 0")
+	}
+	dir := copyFixture(t)
+	p := filepath.Join(dir, "pair-code.json")
+	os.Chmod(p, 0)
+	t.Cleanup(func() { os.Chmod(p, 0o600) })
+	_, _, err := openStore(dir)
+	if !protocol.Is(err, protocol.Unavailable) || !strings.Contains(err.Error(), "pair-code.json") {
+		t.Fatalf("error %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "layout.json")); err == nil {
+		t.Fatal("the import went on")
+	}
+}
