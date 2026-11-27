@@ -183,8 +183,9 @@ A tag `vX.Y.Z` on `main` starts `.github/workflows/release.yml`:
 
 1. The tests run.
 2. The workflow builds one static binary (`CGO_ENABLED=0`) for macOS arm64, macOS amd64, Linux arm64 and Linux amd64.
-3. It attaches `plugin-json_<X.Y.Z>_<os>_<arch>.tar.gz` and `checksums.txt` to the GitHub release.
-4. It writes `Formula/plugin-json.rb` to [spec-studio-app/homebrew-tap](https://github.com/spec-studio-app/homebrew-tap). This step needs the secret `HOMEBREW_TAP_TOKEN`: a token that can push to the tap.
+3. On a macOS runner, `scripts/universal.sh` joins the two macOS binaries with `lipo` into one universal binary (arm64 and x86_64).
+4. It attaches `plugin-json_<X.Y.Z>_<os>_<arch>.tar.gz`, `plugin-json-<X.Y.Z>-darwin-universal.tar.gz` and `checksums.txt` to the GitHub release. `checksums.txt` has one SHA-256 line for each archive, the universal archive included.
+5. It writes `Formula/plugin-json.rb` to [spec-studio-app/homebrew-tap](https://github.com/spec-studio-app/homebrew-tap). This step needs the secret `HOMEBREW_TAP_TOKEN`: a token that can push to the tap.
 
 Then:
 
@@ -192,4 +193,6 @@ Then:
 brew install spec-studio-app/tap/plugin-json
 ```
 
-The relay's image copies the Linux binary from the release.
+Each archive has one folder with the name of the archive (with no `.tar.gz`), and `plugin-json` and `README.md` in that folder. For example, `plugin-json-0.2.0-darwin-universal.tar.gz` has `plugin-json-0.2.0-darwin-universal/plugin-json`.
+
+The relay's image copies the Linux binary from the release. The Spec Studio app puts the universal macOS binary in its bundle.

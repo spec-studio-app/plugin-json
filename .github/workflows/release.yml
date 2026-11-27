@@ -1,7 +1,8 @@
 name: Release
 
 # A tag vX.Y.Z makes a release:
-# - the four static binaries (macOS and Linux, arm64 and amd64) and
+# - the four static binaries (macOS and Linux, arm64 and amd64), one
+#   universal macOS binary (arm64 and x86_64, joined with lipo) and
 #   checksums.txt on the GitHub release,
 # - Formula/plugin-json.rb in spec-studio-app/homebrew-tap (needs the
 #   HOMEBREW_TAP_TOKEN secret: a token that can push to that repo).
@@ -42,9 +43,29 @@ jobs:
           name: plugin-json-${{ matrix.goos }}-${{ matrix.goarch }}
           path: dist/*.tar.gz
 
+  darwin-universal:
+    name: plugin-json darwin-universal
+    needs: binaries
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: plugin-json-darwin-*
+          path: dist
+          merge-multiple: true
+      - name: Join the two macOS binaries with lipo
+        run: scripts/universal.sh "${GITHUB_REF_NAME#v}" dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: plugin-json-darwin-universal
+          path: dist/plugin-json-*-darwin-universal.tar.gz
+
   github-release:
     name: GitHub release
-    needs: binaries
+    needs: [binaries, darwin-universal]
     runs-on: ubuntu-latest
     permissions:
       contents: write
