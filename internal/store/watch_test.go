@@ -107,8 +107,18 @@ func TestWaitAtOnceAndStream(t *testing.T) {
 	if !w.r.Changed || w.at > time.Second {
 		t.Fatalf("wait on a document the host does not have: %+v after %v", w.r, w.at)
 	}
-	_, err := s.Wait(ctx(t), protocol.WatchWaitParams{Stream: "spec:x", TimeoutMs: 50})
+	// A stream with an event after the host's cursor: at once, with the
+	// cursor of the last event.
+	r, err := s.Append(ctx(t), protocol.EventsAppendParams{Stream: "spec:x", Events: []protocol.NewEvent{{Type: "A", Data: raw(1)}, {Type: "B", Data: raw(2)}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w = <-waitAsync(s, protocol.WatchWaitParams{Stream: "spec:x", After: &r.Cursors[0], TimeoutMs: 5000})
+	if !w.r.Changed || w.r.Cursor == nil || *w.r.Cursor != r.Cursors[1] || w.at > time.Second {
+		t.Fatalf("wait on a stream with a newer event: %+v after %v", w.r, w.at)
+	}
+	_, err = s.Wait(ctx(t), protocol.WatchWaitParams{Stream: "spec:x", After: str("x1"), TimeoutMs: 50})
 	if !protocol.Is(err, protocol.Refused) {
-		t.Fatalf("stream wait: %v, want refused", err)
+		t.Fatalf("stream wait with a cursor of another plugin: %v, want refused", err)
 	}
 }

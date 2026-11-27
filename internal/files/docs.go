@@ -16,6 +16,17 @@ type Doc struct {
 	Attributes map[string]any  `json:"attributes"`
 	Version    string          `json:"version"`
 	UpdatedAt  time.Time       `json:"updatedAt"`
+	// Commit is the stream that state.commit last appended to for this
+	// document, and the length of that stream after the append. It is nil
+	// for a document that no commit wrote.
+	Commit *StreamRecord `json:"commit,omitempty"`
+}
+
+// StreamRecord is the stream of a commit and its length (the number of
+// events, deleted events included) after the commit.
+type StreamRecord struct {
+	Stream string `json:"stream"`
+	Length int64  `json:"length"`
 }
 
 // DocExt ends the name of each document file.
@@ -59,12 +70,13 @@ func ReadDoc(path string) (*Doc, error) {
 }
 
 // WriteDoc writes a document file with a new version and the time now. The
-// caller holds the lock of the collection.
-func WriteDoc(stateRoot, collection, key string, value json.RawMessage, attrs map[string]any) (*Doc, error) {
+// caller holds the lock of the collection. rec is the stream record to keep
+// in the file, or nil.
+func WriteDoc(stateRoot, collection, key string, value json.RawMessage, attrs map[string]any, rec *StreamRecord) (*Doc, error) {
 	if attrs == nil {
 		attrs = map[string]any{}
 	}
-	d := &Doc{Key: key, Value: value, Attributes: attrs, Version: NewVersion(), UpdatedAt: time.Now().UTC()}
+	d := &Doc{Key: key, Value: value, Attributes: attrs, Version: NewVersion(), UpdatedAt: time.Now().UTC(), Commit: rec}
 	data, err := json.Marshal(d)
 	if err != nil {
 		return nil, err

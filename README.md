@@ -6,21 +6,35 @@ The plugin implements the protocol in [plugin-sdk](https://github.com/spec-studi
 
 ## What the plugin does
 
-The plugin gives three capabilities of the protocol:
+The plugin speaks protocol 1.0 and 1.1. It gives four capabilities of the protocol and the call `state.commit`:
 
-| Capability | What the plugin does |
+| Capability or call | What the plugin does |
 |---|---|
 | `state` | It keeps each document in one JSON file, with its value, its attributes, its version and the time of its last write. `state.list` filters on the attributes. |
+| `events` | It keeps each stream in one JSON Lines file: one event on each line, in order. `events.read` gives pages with `after`, `from`, `to`, `limit` and `more`. |
+| `state.commit` (1.1) | It checks the version, writes the document and appends the events to the stream as one atomic step, or does none of them. The app writes each change of a spec with it: the spec's state and its activity. |
 | `blobs` | It keeps each blob in one file. The name of the file is the SHA-256 of the blob. |
-| `watch` | `watch.wait` on a document ends at the next change of the document. The relay uses this for the long poll of `read_messages`. |
-
-The plugin does not give `events`. History and replay come with [plugin-temporal](https://github.com/spec-studio-app/plugin-temporal).
+| `watch` | `watch.wait` on a document ends at the next change of the document. `watch.wait` on a stream ends at the next event. The relay uses this for the long poll of `read_messages`. |
 
 The plugin keeps its data after it stops (`durable: true`).
 
+In a 1.1 handshake, the plugin gives `storeId`: `json:<absolute data folder>`. Two plugin processes on the same data folder give the same `storeId`.
+
 Each write is atomic. The plugin writes a temporary file in the same folder, flushes it, and renames it over the old file. A reader sees the old file or the new file, never a part of a file. After a crash, the next start removes the temporary files.
 
-Each compare and swap is atomic, also between two processes on the same data folder. The plugin holds an OS file lock (`flock`) on the collection for each `state.put` and `state.delete`. Thus the relay and `relay pair-code` can use the same folder at the same time. A wait sees a change from another process within 250 ms.
+Each compare and swap is atomic, also between two processes on the same data folder. The plugin holds an OS file lock (`flock`) on the collection for each `state.put`, `state.delete` and `state.commit`, and an OS file lock on the stream for each append, read and delete of events. `state.commit` takes the lock of the collection first and then the lock of the stream, so two calls never wait on each other. Thus the relay and `relay pair-code`, or the app and the `studio` CLI, can use the same folder at the same time. A wait sees a change from another process within 250 ms.
+
+### How `state.commit` stays atomic
+
+A commit has two writes: the events and the document. The plugin does them in this order, under the two locks:
+
+1. It checks the expected version. When it is false, the commit stops with `conflict` and writes nothing.
+2. It appends the events to the stream file in one write, and flushes the file.
+3. It writes the new document file and renames it over the old file. The document file records the stream and the length of the stream after the append. The rename is the moment of the commit.
+
+A crash between step 2 and step 3 leaves events that no document records. The stream file has a marker that names the document that commits to it. At each start, and at each read of the stream under its lock, the plugin cuts the stream file back to the length that the document records. Thus a crash leaves the old state and no new event.
+
+A stream with no committing document, for example the events of a desk, uses `events.append` only. The plugin never cuts it back. A part of a line that a crash left at the end of any stream file is not an event, and the plugin removes it.
 
 The plugin never writes a value, a token, a token hash or a pairing code hash to its log or to an error message. An error message names the collection and the key only.
 
@@ -58,6 +72,9 @@ plugin-json --listen 0.0.0.0:7070 --token "$PLUGIN_TOKEN"
   .lock                            the lock of the folder, held during an import only
   state/<collection>/.lock         the lock of a collection, held during one write
   state/<collection>/<key>.json    one document
+  events/<stream>.jsonl            the events of one stream, one event on each line
+  events/<stream>.lock             the lock of a stream, held during one append, read or delete
+  events/<stream>.doc.json         the marker: the document that state.commit writes with the stream
   blobs/<aa>/<sha256>              one blob; <aa> is the first two characters of the hash
   backup-relay-json-<time>/        the old files of the relay, after an import
 ```
@@ -70,11 +87,22 @@ A document file has this shape:
   "value": { "…": "…" },
   "attributes": { "repoKey": "1a2b3c4d5e6f", "open": true },
   "version": "9f2c…",
-  "updatedAt": "2026-11-27T10:00:00.123456Z"
+  "updatedAt": "2026-11-27T10:00:00.123456Z",
+  "commit": { "stream": "spec:1a2b3c4d5e6f:drop-spec", "length": 42 }
 }
 ```
 
-The name of a document file comes from its key. The characters `a-z 0-9 . _ -` stay. Each other character becomes `%XX` (its hex code). Thus `Ab` and `ab` are two files, also on a disk that ignores case. A name that is longer than 200 characters after this step becomes `%h<SHA-256 of the key>`. No other name gives a file name that starts with `%h`. The plugin always reads the key from the file, not from the file name.
+`commit` is in the file only after a `state.commit`. It is the stream of the last commit and the length of the stream after it. A `state.put` keeps it.
+
+A line of a stream file has this shape:
+
+```json
+{"type":"activity","at":"2026-11-27T10:00:00Z","data":{"kind":"status"}}
+```
+
+The cursor of an event is its number in the stream, as a string: `"1"` for the first event that the stream ever had. A host must not read a meaning into a cursor. `events.delete` keeps the count in a first line `{"base":N}`, so a new event never gets the cursor of a deleted event, and the length that a document records stays true.
+
+The name of a document file comes from its key, and the name of a stream file comes from its stream name. The characters `a-z 0-9 . _ -` stay. Each other character becomes `%XX` (its hex code). Thus `Ab` and `ab` are two files, also on a disk that ignores case. A name that is longer than 200 characters after this step becomes `%h<SHA-256 of the key>`. No other name gives a file name that starts with `%h`. The plugin always reads the key from the file, not from the file name.
 
 A version is 16 random bytes in hex. The plugin never uses a version again for the same document.
 
@@ -137,7 +165,7 @@ go build -o plugin-json .
 plugin-conformance --schemas <plugin-sdk>/schema --setting data_dir=/tmp/plugin-json-test -- ./plugin-json
 ```
 
-The runner skips the tests of `events`, because the plugin does not give `events`.
+The runner runs the tests of `state.commit` (protocol 1.1) and of `events`. It skips the `continueStream` test hook, because a stream of this plugin is always one file, and `secret-canary`, because the plugin has no secret setting.
 
 ## Develop
 

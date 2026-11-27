@@ -1,5 +1,6 @@
 // Package store is the storage of plugin-json: documents as JSON files,
-// blobs as files named by SHA-256, and waits on documents, in one data folder.
+// streams of events as JSON Lines files, blobs as files named by SHA-256,
+// and waits on documents and streams, in one data folder.
 package store
 
 import (
@@ -33,15 +34,17 @@ const (
 	LayoutVersion = 1
 )
 
-// Store is the plugin's store. It implements plugin.Store, plugin.BlobStore,
-// plugin.Watcher and plugin.Durable.
+// Store is the plugin's store. It implements plugin.Store,
+// plugin.EventStore, plugin.Committer, plugin.BlobStore, plugin.Watcher,
+// plugin.StoreIdentity and plugin.Durable.
 type Store struct {
-	dir     string
-	temp    bool
-	log     *slog.Logger
-	mu      sync.Mutex
-	locks   map[string]*sync.Mutex
-	waiters *hub
+	dir         string
+	temp        bool
+	log         *slog.Logger
+	mu          sync.Mutex
+	locks       map[string]*sync.Mutex
+	streamLocks map[string]*sync.Mutex
+	waiters     *hub
 	// getenv and home are for the tests of the default data folder.
 	getenv func(string) string
 	home   func() (string, error)
@@ -49,7 +52,7 @@ type Store struct {
 
 // New makes a store. The SDK calls Open at the first handshake.
 func New() *Store {
-	return &Store{locks: map[string]*sync.Mutex{}, waiters: newHub(), getenv: os.Getenv, home: os.UserHomeDir}
+	return &Store{locks: map[string]*sync.Mutex{}, streamLocks: map[string]*sync.Mutex{}, waiters: newHub(), getenv: os.Getenv, home: os.UserHomeDir}
 }
 
 // Durable is true: the data stays after the plugin stops.
@@ -88,8 +91,9 @@ func dataDirError(dir string) error {
 }
 
 // Open finds the data folder, checks that it takes a write, imports the
-// relay's old JSON store when the folder has one, and removes the temporary
-// files that a crash left.
+// relay's old JSON store when the folder has one, removes the temporary
+// files that a crash left, and cuts back the events of a commit that a crash
+// stopped.
 func (s *Store) Open(ctx context.Context, o plugin.OpenOptions) (err error) {
 	s.temp, s.dir = false, ""
 	s.log = o.Log
@@ -174,7 +178,10 @@ func (s *Store) prepare() error {
 	if err := files.SweepTemps(filepath.Join(s.dir, "blobs")); err != nil {
 		return protocol.NewError(protocol.Unavailable, "The plugin cannot clean the temporary files in its data folder (%s).", s.dir)
 	}
-	return nil
+	if err := files.SweepTemps(s.eventsRoot()); err != nil {
+		return protocol.NewError(protocol.Unavailable, "The plugin cannot clean the temporary files in its data folder (%s).", s.dir)
+	}
+	return s.recoverStreams()
 }
 
 // Close ends the waits. A temporary data folder of a test host goes away.

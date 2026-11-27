@@ -51,7 +51,13 @@ func (s *Store) Put(ctx context.Context, p protocol.StatePutParams) (protocol.St
 	if err := checkVersion(cur, p.ExpectedVersion); err != nil {
 		return protocol.StatePutResult{}, named(err, p.Collection, p.Key)
 	}
-	d, err := files.WriteDoc(s.stateRoot(), p.Collection, p.Key, p.Value, p.Attributes)
+	// Keep the stream record of the last commit: the cut back of the stream
+	// on a read uses it.
+	var rec *files.StreamRecord
+	if cur != nil {
+		rec = cur.Commit
+	}
+	d, err := files.WriteDoc(s.stateRoot(), p.Collection, p.Key, p.Value, p.Attributes, rec)
 	if err != nil {
 		return protocol.StatePutResult{}, unavailable("The plugin cannot write the document %s / %s. Check the free space and the access of the data folder.", p.Collection, p.Key)
 	}
@@ -101,6 +107,14 @@ func (s *Store) Delete(ctx context.Context, p protocol.StateDeleteParams) (proto
 	expected := p.ExpectedVersion
 	if err := checkVersion(cur, &expected); err != nil {
 		return protocol.StateDeleteResult{}, named(err, p.Collection, p.Key)
+	}
+	// A commit wrote the document: the stream no longer has a committing
+	// document. Remove the stream's marker first, so a crash between the two
+	// steps cuts back no event.
+	if cur.Commit != nil {
+		if err := s.releaseStream(cur.Commit.Stream, p.Collection, p.Key); err != nil {
+			return protocol.StateDeleteResult{}, err
+		}
 	}
 	path := files.DocPath(s.stateRoot(), p.Collection, p.Key)
 	if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {

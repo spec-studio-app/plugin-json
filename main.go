@@ -1,5 +1,5 @@
 // Command plugin-json is the JSON-file backend plugin of Spec Studio. It
-// keeps a host's documents and blobs as files in one data folder. See
+// keeps a host's documents, events and blobs as files in one data folder. See
 // README.md and https://github.com/spec-studio-app/plugin-sdk.
 package main
 
