@@ -67,7 +67,7 @@ func (s *Store) Wait(ctx context.Context, p protocol.WatchWaitParams) (protocol.
 		// Take the channel before the read, so no change goes between them.
 		changed := s.waiters.channel(p.Collection, p.Key)
 		d, err := files.ReadDoc(path)
-		if err != nil {
+		if err != nil || (d != nil && d.Key != p.Key) {
 			return protocol.WatchWaitResult{}, unavailable("The plugin cannot read the document %s / %s. Correct or remove its file in the data folder.", p.Collection, p.Key)
 		}
 		var cur *string
