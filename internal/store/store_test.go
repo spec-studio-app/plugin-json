@@ -2,7 +2,9 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -246,5 +248,80 @@ func TestFailedTestOpenThenRealOpen(t *testing.T) {
 	s.Close(context.Background())
 	if _, err := os.Stat(filepath.Join(real, "keep")); err != nil {
 		t.Fatalf("Close removed the real data folder: %v", err)
+	}
+}
+
+// readLayout reads layout.json of a data folder.
+func readLayout(t *testing.T, dir string) Layout {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(dir, "layout.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var l Layout
+	if err := json.Unmarshal(data, &l); err != nil {
+		t.Fatal(err)
+	}
+	return l
+}
+
+// A new folder gets the layout version of this plugin.
+func TestNewFolderLayoutVersion(t *testing.T) {
+	dir := t.TempDir()
+	open(t, dir)
+	if l := readLayout(t, dir); l.Layout != LayoutName || l.Version != 2 {
+		t.Fatalf("layout.json %+v, want plugin-json version 2", l)
+	}
+}
+
+// A folder at layout version 1 (the data of an older plugin-json: documents
+// with no "commit" field, no events) opens, keeps its documents, and gets
+// version 2. A commit on an old document then works, after a restart too.
+func TestLayoutUpgradeFromV1(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "layout.json"), []byte(`{"layout":"plugin-json","version":1}`), 0o600)
+	old, err := files.WriteDoc(filepath.Join(dir, "state"), "app-specs", "r1:old", raw("old"), map[string]any{"open": true}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, log := open(t, dir)
+	if l := readLayout(t, dir); l.Version != LayoutVersion {
+		t.Fatalf("layout.json %+v after the upgrade, want version %d", l, LayoutVersion)
+	}
+	if !strings.Contains(log.String(), "layout_upgraded") {
+		t.Fatalf("no log line for the upgrade: %s", log.String())
+	}
+	g := get(t, s, "r1:old")
+	if !g.Exists || g.Version != old.Version || string(g.Value) != `"old"` || g.Attributes["open"] != true {
+		t.Fatalf("the old document after the upgrade: %+v", g)
+	}
+	c := commit(t, s, "r1:old", "new", &old.Version, "spec:r1:old", "A", "B")
+	s.Close(ctx(t))
+
+	s, log = open(t, dir)
+	if strings.Contains(log.String(), "layout_upgraded") {
+		t.Fatalf("a second upgrade: %s", log.String())
+	}
+	if g := get(t, s, "r1:old"); g.Version != c.Version || string(g.Value) != `"new"` {
+		t.Fatalf("the document after a restart: %+v", g)
+	}
+	if got := types(readAll(t, s, "spec:r1:old")); got != "A,B" {
+		t.Fatalf("the stream after a restart: %s", got)
+	}
+}
+
+// A folder with a newer layout version than this plugin's is refused, and
+// the plugin changes nothing in it. A plugin-json that knows only version 1
+// refuses a version 2 folder by the same rule.
+func TestNewerLayoutRefused(t *testing.T) {
+	dir := t.TempDir()
+	newer := fmt.Sprintf(`{"layout":"plugin-json","version":%d}`, LayoutVersion+1)
+	os.WriteFile(filepath.Join(dir, "layout.json"), []byte(newer), 0o600)
+	err := New().Open(ctx(t), plugin.OpenOptions{Settings: map[string]string{SettingDataDir: dir}, Host: protocol.Host{Kind: "relay"}, Log: slog.New(slog.DiscardHandler)})
+	if !protocol.Is(err, protocol.Unavailable) || !strings.Contains(err.Error(), "Update plugin-json") {
+		t.Fatalf("error %v, want unavailable with Update plugin-json", err)
+	}
+	if data, _ := os.ReadFile(filepath.Join(dir, "layout.json")); string(data) != newer {
+		t.Fatalf("layout.json changed: %s", data)
 	}
 }

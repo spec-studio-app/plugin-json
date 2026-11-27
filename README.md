@@ -69,7 +69,7 @@ plugin-json --listen 0.0.0.0:7070 --token "$PLUGIN_TOKEN"
 
 ```
 <data_dir>/
-  layout.json                      {"layout":"plugin-json","version":1}
+  layout.json                      {"layout":"plugin-json","version":2}
   .lock                            the lock of the folder, held during an import only
   state/<collection>/.lock         the lock of a collection, held during one write
   state/<collection>/<key>.json    one document
@@ -79,6 +79,15 @@ plugin-json --listen 0.0.0.0:7070 --token "$PLUGIN_TOKEN"
   blobs/<aa>/<sha256>              one blob; <aa> is the first two characters of the hash
   backup-relay-json-<time>/        the old files of the relay, after an import
 ```
+
+`layout.json` gives the version of the layout:
+
+| Version | The layout |
+|---|---|
+| 1 | Documents and blobs. plugin-json before events. |
+| 2 | Version 1, plus `events/` (stream files and markers) and the `commit` field of a document. |
+
+When the plugin starts on a folder at version 1, it writes version 2 to `layout.json`. A version 1 folder has no events and no `commit` fields, so nothing else changes, and the documents and blobs stay. A plugin refuses a folder with a newer version than its own: the handshake fails with `unavailable` and the message "Update plugin-json". Thus an older plugin-json never writes a document without its `commit` field, which would cut back the committed events of its stream.
 
 A document file has this shape:
 

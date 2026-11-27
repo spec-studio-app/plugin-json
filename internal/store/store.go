@@ -29,9 +29,17 @@ type Layout struct {
 }
 
 // LayoutName and LayoutVersion are the layout that this plugin writes.
+//
+// Version 1: documents and blobs. Version 2 adds the events/ folder (stream
+// files and stream markers) and the "commit" field of a document. A plugin
+// that knows only version 1 would rewrite a document without its "commit"
+// field, and the next read of its stream would then cut back committed
+// events. So a plugin refuses a folder with a newer version than its own.
+// A version 1 folder has no events and no markers: the plugin upgrades it
+// when it writes the new layout.json, with no other change.
 const (
 	LayoutName    = "plugin-json"
-	LayoutVersion = 1
+	LayoutVersion = 2
 )
 
 // Store is the plugin's store. It implements plugin.Store,
@@ -92,7 +100,8 @@ func dataDirError(dir string) error {
 }
 
 // Open finds the data folder, checks that it takes a write, imports the
-// relay's old JSON store when the folder has one, removes the temporary
+// relay's old JSON store when the folder has one, upgrades an older layout
+// version, removes the temporary
 // files that a crash left, and cuts back the events of a commit that a crash
 // stopped.
 func (s *Store) Open(ctx context.Context, o plugin.OpenOptions) (err error) {
@@ -164,6 +173,13 @@ func (s *Store) prepare() error {
 		}
 		if legacy.HasOld(s.dir) {
 			s.log.Info("legacy_files_ignored", "reason", "the data folder has the plugin layout already")
+		}
+		if l.Version < LayoutVersion {
+			layout, _ := json.Marshal(Layout{Layout: LayoutName, Version: LayoutVersion})
+			if err := files.WriteAtomic(layoutPath, layout); err != nil {
+				return protocol.NewError(protocol.Unavailable, "The plugin cannot write layout.json in the data folder (%s). Check the access of the data folder.", s.dir)
+			}
+			s.log.Info("layout_upgraded", "from", l.Version, "to", LayoutVersion)
 		}
 	case errors.Is(err, fs.ErrNotExist):
 		layout, _ := json.Marshal(Layout{Layout: LayoutName, Version: LayoutVersion})
