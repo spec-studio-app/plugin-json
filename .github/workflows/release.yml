@@ -1,0 +1,101 @@
+name: Release
+
+# A tag vX.Y.Z makes a release:
+# - the four static binaries (macOS and Linux, arm64 and amd64) and
+#   checksums.txt on the GitHub release,
+# - Formula/plugin-json.rb in spec-studio-app/homebrew-tap (needs the
+#   HOMEBREW_TAP_TOKEN secret: a token that can push to that repo).
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Tests
+    uses: ./.github/workflows/ci.yml
+
+  binaries:
+    name: plugin-json ${{ matrix.goos }}-${{ matrix.goarch }}
+    needs: test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - { goos: darwin, goarch: arm64 }
+          - { goos: darwin, goarch: amd64 }
+          - { goos: linux, goarch: arm64 }
+          - { goos: linux, goarch: amd64 }
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.x"
+      - name: Build
+        run: scripts/build.sh "${GITHUB_REF_NAME#v}" "${{ matrix.goos }}" "${{ matrix.goarch }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: plugin-json-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/*.tar.gz
+
+  github-release:
+    name: GitHub release
+    needs: binaries
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Make the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          (cd dist && sha256sum *.tar.gz > checksums.txt)
+          gh release create "${GITHUB_REF_NAME}" dist/*.tar.gz dist/checksums.txt \
+            --repo "${GITHUB_REPOSITORY}" --title "${GITHUB_REF_NAME}" --generate-notes
+      - uses: actions/upload-artifact@v4
+        with:
+          name: checksums
+          path: dist/checksums.txt
+
+  homebrew:
+    name: Homebrew formula
+    needs: github-release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: checksums
+          path: dist
+      - name: Push Formula/plugin-json.rb to the tap
+        env:
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          if [ -z "$TAP_TOKEN" ]; then
+            echo "::warning::HOMEBREW_TAP_TOKEN is not set: the formula was not pushed."
+            exit 0
+          fi
+          version="${GITHUB_REF_NAME#v}"
+          git clone --quiet "https://x-access-token:${TAP_TOKEN}@github.com/spec-studio-app/homebrew-tap.git" tap
+          mkdir -p tap/Formula
+          scripts/render-formula.sh "$version" dist/checksums.txt > tap/Formula/plugin-json.rb
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/plugin-json.rb
+          if git diff --cached --quiet; then
+            echo "The formula is already at ${version}."
+            exit 0
+          fi
+          git commit -m "plugin-json ${version}"
+          git push origin HEAD

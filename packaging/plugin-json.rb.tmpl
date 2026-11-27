@@ -1,0 +1,38 @@
+# This file is made by the release workflow of spec-studio-app/plugin-json
+# (scripts/render-formula.sh). Do not change it here.
+class PluginJson < Formula
+  desc "JSON-file backend plugin of Spec Studio"
+  homepage "https://github.com/spec-studio-app/plugin-json"
+  version "{{VERSION}}"
+
+  on_macos do
+    on_arm do
+      url "https://github.com/spec-studio-app/plugin-json/releases/download/v{{VERSION}}/plugin-json_{{VERSION}}_darwin_arm64.tar.gz"
+      sha256 "{{SHA_DARWIN_ARM64}}"
+    end
+    on_intel do
+      url "https://github.com/spec-studio-app/plugin-json/releases/download/v{{VERSION}}/plugin-json_{{VERSION}}_darwin_amd64.tar.gz"
+      sha256 "{{SHA_DARWIN_AMD64}}"
+    end
+  end
+
+  on_linux do
+    on_arm do
+      url "https://github.com/spec-studio-app/plugin-json/releases/download/v{{VERSION}}/plugin-json_{{VERSION}}_linux_arm64.tar.gz"
+      sha256 "{{SHA_LINUX_ARM64}}"
+    end
+    on_intel do
+      url "https://github.com/spec-studio-app/plugin-json/releases/download/v{{VERSION}}/plugin-json_{{VERSION}}_linux_amd64.tar.gz"
+      sha256 "{{SHA_LINUX_AMD64}}"
+    end
+  end
+
+  def install
+    bin.install "plugin-json"
+  end
+
+  test do
+    output = pipe_output(bin/"plugin-json", "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"plugin.describe\",\"params\":{}}\n")
+    assert_match "\"name\":\"json\"", output
+  end
+end
