@@ -1,0 +1,436 @@
+{
+  "relayCommit": "3f50e4a",
+  "documents": [
+    {
+      "collection": "relay",
+      "key": "config",
+      "value": {
+        "version": 1,
+        "state": {
+          "deployId": "default",
+          "agents": [
+            {
+              "hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "pairedAt": "2026-11-20T10:00:00.000Z"
+            }
+          ],
+          "pairCode": {
+            "hash": "5a4368b40d7c87444234145f185454316698987677b5553f582abdaa67f65a63",
+            "expiresAt": 4070908800000
+          },
+          "clients": [
+            {
+              "client": {
+                "client_id": "client-1",
+                "client_name": "Claude",
+                "redirect_uris": [
+                  "https://claude.ai/api/mcp/auth_callback"
+                ]
+              },
+              "signedIn": true
+            }
+          ],
+          "access": {
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": {
+              "clientId": "client-1",
+              "scopes": [
+                "mcp"
+              ],
+              "expiresAt": 4070908800000
+            }
+          },
+          "refresh": {
+            "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc": {
+              "clientId": "client-1",
+              "scopes": [
+                "mcp"
+              ],
+              "expiresAt": 4070908800000
+            }
+          },
+          "repos": {
+            "repos": [
+              "/Users/me/code/app",
+              "/Users/me/code/api"
+            ],
+            "at": "2026-11-20T10:01:00.000Z"
+          },
+          "updateLimit": 500
+        },
+        "pairCodeId": "c008fb88-61cd-44ec-8232-509a1d674fd8"
+      },
+      "attributes": {}
+    },
+    {
+      "collection": "specs",
+      "key": "9564acb42d74:busy-spec",
+      "value": {
+        "version": 1,
+        "state": {
+          "deployId": "default",
+          "spec": {
+            "repoKey": "9564acb42d74",
+            "slug": "busy-spec",
+            "repo": "/Users/me/code/app"
+          },
+          "state": {
+            "slug": "busy-spec",
+            "title": "busy-spec",
+            "stage": "build",
+            "status": "working",
+            "mode": "autopilot",
+            "createdAt": "2026-11-01T00:00:00Z"
+          },
+          "turn": {
+            "turn": "yours",
+            "needsYou": true
+          },
+          "line": 2,
+          "syncedAt": "2026-11-27T15:05:57.389Z",
+          "events": [
+            {
+              "line": 1,
+              "event": {
+                "t": "2026-11-24T10:00:00Z",
+                "kind": "status"
+              }
+            },
+            {
+              "line": 2,
+              "event": {
+                "t": "2026-11-24T10:01:00Z",
+                "kind": "message",
+                "id": "u1",
+                "text": "Unread for Claude AI"
+              }
+            }
+          ],
+          "mac": {
+            "nextSeq": 2,
+            "messages": [
+              {
+                "id": "c40df254-cfa0-46cd-ac73-1528336c5e09",
+                "seq": 1,
+                "from": "coordinator",
+                "spec": {
+                  "repoKey": "9564acb42d74",
+                  "slug": "busy-spec"
+                },
+                "stage": "",
+                "text": "Waits for the Mac",
+                "createdAt": "2026-11-27T15:05:57.399Z"
+              }
+            ]
+          },
+          "coordinator": {
+            "nextSeq": 2,
+            "messages": [
+              {
+                "id": "u1",
+                "from": "session",
+                "spec": {
+                  "repoKey": "9564acb42d74",
+                  "slug": "busy-spec"
+                },
+                "stage": "build",
+                "text": "Unread for Claude AI",
+                "createdAt": "2026-11-24T10:01:00Z",
+                "seq": 1
+              }
+            ],
+            "readUpTo": 0
+          },
+          "finished": false,
+          "updateLimit": 2000,
+          "graceMs": 50,
+          "lastStatusAt": "2026-11-24T10:00:00Z",
+          "lastStatusLine": 1,
+          "lastMessageLine": 2,
+          "lastSentAt": "2026-11-27T15:05:57.399Z"
+        },
+        "lastActivityAt": 1795791957399
+      },
+      "attributes": {
+        "repoKey": "9564acb42d74",
+        "deployId": "default",
+        "open": true,
+        "pendingForMac": true,
+        "pendingForCoordinator": true
+      }
+    },
+    {
+      "collection": "specs",
+      "key": "9564acb42d74:fix..login",
+      "value": {
+        "version": 1,
+        "state": {
+          "deployId": "default",
+          "spec": {
+            "repoKey": "9564acb42d74",
+            "slug": "fix..login",
+            "repo": "/Users/me/code/app"
+          },
+          "state": {
+            "slug": "fix..login",
+            "title": "fix..login",
+            "stage": "merged",
+            "status": "done",
+            "mode": "autopilot",
+            "createdAt": "2026-11-01T00:00:00Z"
+          },
+          "turn": null,
+          "line": 1,
+          "syncedAt": "2026-11-27T15:05:57.408Z",
+          "events": [
+            {
+              "line": 1,
+              "event": {
+                "t": "2026-11-24T11:00:00Z",
+                "kind": "status"
+              }
+            }
+          ],
+          "mac": {
+            "nextSeq": 2,
+            "messages": [
+              {
+                "id": "0eccb298-ae9d-42fa-ab65-a5efbf72439d",
+                "seq": 1,
+                "from": "coordinator",
+                "spec": {
+                  "repoKey": "9564acb42d74",
+                  "slug": "fix..login"
+                },
+                "stage": "",
+                "text": "Still waits",
+                "createdAt": "2026-11-27T15:05:57.417Z"
+              }
+            ]
+          },
+          "coordinator": {
+            "nextSeq": 1,
+            "messages": [],
+            "readUpTo": 0
+          },
+          "finished": true,
+          "updateLimit": 2000,
+          "graceMs": 50,
+          "lastStatusAt": "2026-11-24T11:00:00Z",
+          "lastStatusLine": 1,
+          "lastSentAt": "2026-11-27T15:05:57.417Z"
+        },
+        "lastActivityAt": 1795791957417
+      },
+      "attributes": {
+        "repoKey": "9564acb42d74",
+        "deployId": "default",
+        "open": false,
+        "pendingForMac": true,
+        "pendingForCoordinator": false
+      }
+    },
+    {
+      "collection": "specs",
+      "key": "e42225e9bbd4:quiet",
+      "value": {
+        "version": 1,
+        "state": {
+          "deployId": "default",
+          "spec": {
+            "repoKey": "e42225e9bbd4",
+            "slug": "quiet",
+            "repo": "/Users/me/code/api"
+          },
+          "state": {
+            "slug": "quiet",
+            "title": "quiet",
+            "stage": "plan",
+            "status": "working",
+            "mode": "autopilot",
+            "createdAt": "2026-11-01T00:00:00Z"
+          },
+          "turn": null,
+          "line": 1,
+          "syncedAt": "2026-11-27T15:05:57.427Z",
+          "events": [
+            {
+              "line": 1,
+              "event": {
+                "t": "2026-11-24T12:00:00Z",
+                "kind": "message",
+                "id": "q1",
+                "text": "Read"
+              }
+            }
+          ],
+          "mac": {
+            "nextSeq": 1,
+            "messages": []
+          },
+          "coordinator": {
+            "nextSeq": 2,
+            "messages": [
+              {
+                "id": "q1",
+                "from": "session",
+                "spec": {
+                  "repoKey": "e42225e9bbd4",
+                  "slug": "quiet"
+                },
+                "stage": "plan",
+                "text": "Read",
+                "createdAt": "2026-11-24T12:00:00Z",
+                "seq": 1
+              }
+            ],
+            "readUpTo": 1
+          },
+          "finished": false,
+          "updateLimit": 2000,
+          "graceMs": 50,
+          "lastMessageLine": 1
+        },
+        "lastActivityAt": 1795791957437
+      },
+      "attributes": {
+        "repoKey": "e42225e9bbd4",
+        "deployId": "default",
+        "open": true,
+        "pendingForMac": false,
+        "pendingForCoordinator": false
+      }
+    },
+    {
+      "collection": "desks",
+      "key": "9564acb42d74",
+      "value": {
+        "version": 1,
+        "state": {
+          "deployId": "default",
+          "desk": {
+            "repoKey": "9564acb42d74",
+            "repo": "/Users/me/code/app"
+          },
+          "open": true,
+          "turn": {
+            "turn": "idle",
+            "needsYou": false
+          },
+          "canMessage": true,
+          "reason": null,
+          "stateAt": "2026-11-27T15:05:57.967Z",
+          "line": 0,
+          "mac": {
+            "nextSeq": 2,
+            "messages": [
+              {
+                "id": "78703292-2315-4fc5-a7c7-794cb6f229fa",
+                "seq": 1,
+                "from": "coordinator",
+                "desk": {
+                  "repoKey": "9564acb42d74",
+                  "repo": "/Users/me/code/app"
+                },
+                "text": "Is CI green on main?",
+                "createdAt": "2026-11-27T15:05:57.980Z"
+              }
+            ]
+          },
+          "coordinator": {
+            "nextSeq": 1,
+            "messages": [],
+            "readUpTo": 0
+          },
+          "updateLimit": 2000
+        }
+      },
+      "attributes": {
+        "repoKey": "9564acb42d74",
+        "deployId": "default",
+        "pendingForMac": true,
+        "pendingForCoordinator": false
+      }
+    },
+    {
+      "collection": "desks",
+      "key": "e42225e9bbd4",
+      "value": {
+        "version": 1,
+        "state": {
+          "deployId": "default",
+          "desk": {
+            "repoKey": "e42225e9bbd4",
+            "repo": "/Users/me/code/api"
+          },
+          "open": true,
+          "turn": {
+            "turn": "idle",
+            "needsYou": false
+          },
+          "canMessage": true,
+          "reason": null,
+          "stateAt": "2026-11-27T15:05:57.990Z",
+          "line": 1,
+          "mac": {
+            "nextSeq": 1,
+            "messages": []
+          },
+          "coordinator": {
+            "nextSeq": 2,
+            "messages": [
+              {
+                "id": "r1",
+                "from": "session",
+                "desk": {
+                  "repoKey": "e42225e9bbd4",
+                  "repo": "/Users/me/code/api"
+                },
+                "text": "CI is green.",
+                "createdAt": "2026-11-24T14:00:00Z",
+                "seq": 1
+              }
+            ],
+            "readUpTo": 0
+          },
+          "updateLimit": 2000
+        }
+      },
+      "attributes": {
+        "repoKey": "e42225e9bbd4",
+        "deployId": "default",
+        "pendingForMac": false,
+        "pendingForCoordinator": true
+      }
+    },
+    {
+      "collection": "closed-specs",
+      "key": "e42225e9bbd4:dropped-spec",
+      "value": {
+        "repoKey": "e42225e9bbd4",
+        "slug": "dropped-spec",
+        "closedAt": 1795791957507,
+        "memo": {
+          "repo": "/Users/me/code/api",
+          "title": "dropped-spec",
+          "stage": "build",
+          "status": "working",
+          "note": null,
+          "mode": "autopilot",
+          "turn": {
+            "turn": "working",
+            "needsYou": false
+          },
+          "line": 1,
+          "syncedAt": "2026-11-27T15:05:57.446Z",
+          "waitingForMac": 0,
+          "unreadForCoordinator": 0,
+          "dropped": true
+        }
+      },
+      "attributes": {
+        "repoKey": "e42225e9bbd4",
+        "closedAt": 1795791957507
+      }
+    }
+  ]
+}

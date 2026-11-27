@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Go tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.x"
+      - name: Format
+        run: test -z "$(gofmt -l .)"
+      - name: Vet
+        run: go vet ./...
+      - name: Test
+        run: go test -race ./...
+      - name: README
+        run: scripts/check-readme.sh
+
+  conformance:
+    name: Conformance (${{ matrix.mode }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        mode: [stdio, http]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.x"
+      - name: The plugin-sdk conformance runner
+        run: scripts/conformance.sh ${{ matrix.mode }}
+
+  build:
+    name: Build the release archives
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.x"
+      - name: Build
+        run: |
+          for target in darwin/arm64 darwin/amd64 linux/arm64 linux/amd64; do
+            scripts/build.sh 0.0.0-ci "${target%/*}" "${target#*/}"
+          done
+          (cd dist && sha256sum *.tar.gz > checksums.txt && cat checksums.txt)
+      - name: The Linux binary runs with no libc
+        run: scripts/static-check.sh dist/plugin-json_0.0.0-ci_linux_amd64/plugin-json
+      - name: The formula renders
+        run: |
+          scripts/render-formula.sh 0.0.0-ci dist/checksums.txt > dist/plugin-json.rb
+          ruby -c dist/plugin-json.rb
