@@ -16,7 +16,7 @@ var afterCommitAppend func() error
 // document, as one step (protocol 1.1, state.commit).
 //
 // The commit holds the lock of the collection and then the lock of the
-// stream. It appends the events, then renames the new document file. That
+// stream (one stream lock at a time). It appends the events, then renames the new document file. That
 // file records the stream and its length after the append, and the rename is
 // the moment of the commit: a crash before it leaves events that the next
 // read of the stream cuts back (see loadStream). A version that is not the
@@ -27,22 +27,35 @@ func (s *Store) Commit(ctx context.Context, p protocol.StateCommitParams) (proto
 		return protocol.StateCommitResult{}, err
 	}
 	defer unlockCollection()
-	unlockStream, err := s.streamLock(p.Stream)
-	if err != nil {
-		return protocol.StateCommitResult{}, err
-	}
-	defer unlockStream()
-
-	f, err := s.loadStream(p.Stream)
-	if err != nil {
-		return protocol.StateCommitResult{}, err
-	}
 	cur, err := s.readDoc(p.Collection, p.Key)
 	if err != nil {
 		return protocol.StateCommitResult{}, err
 	}
 	if err := checkVersion(cur, p.ExpectedVersion); err != nil {
 		return protocol.StateCommitResult{}, named(err, p.Collection, p.Key)
+	}
+
+	// The document moves to another stream. The document file records only
+	// the new stream, so first settle each other stream whose marker names
+	// the document: cut it back to its committed length and remove its
+	// marker. Else the next read of the old stream cuts back to the marker's
+	// base and loses the events that the document committed there. A crash
+	// after this step leaves the old stream with no marker, and all its
+	// events stay.
+	if cur != nil && cur.Commit != nil && cur.Commit.Stream != p.Stream {
+		if err := s.releaseDoc(p.Collection, p.Key, p.Stream); err != nil {
+			return protocol.StateCommitResult{}, err
+		}
+	}
+
+	unlockStream, err := s.streamLock(p.Stream)
+	if err != nil {
+		return protocol.StateCommitResult{}, err
+	}
+	defer unlockStream()
+	f, err := s.loadStream(p.Stream)
+	if err != nil {
+		return protocol.StateCommitResult{}, err
 	}
 
 	// The marker names this document as the one that commits to the stream.

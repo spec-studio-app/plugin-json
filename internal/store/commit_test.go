@@ -217,6 +217,149 @@ func TestCommitWithPutAppendDelete(t *testing.T) {
 	}
 }
 
+// markersOf gives the streams whose marker names the document.
+func markersOf(t *testing.T, s *Store, key string) []string {
+	t.Helper()
+	entries, err := os.ReadDir(s.eventsRoot())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out []string
+	for _, e := range entries {
+		if !strings.HasSuffix(e.Name(), markerExt) {
+			continue
+		}
+		m, err := readMarker(filepath.Join(s.eventsRoot(), e.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if m != nil && m.Collection == "app-specs" && m.Key == key {
+			out = append(out, m.Stream)
+		}
+	}
+	return out
+}
+
+// A document that commits to a second stream keeps the events that it
+// committed to the first one, after a restart and after its delete.
+func TestCommitMovesToAnotherStream(t *testing.T) {
+	dir := t.TempDir()
+	s, _ := open(t, dir)
+	const key, s1, s2 = "r1:drop-spec", "spec:r1:one", "spec:r1:two"
+	v1 := commit(t, s, key, "one", nil, s1, "A")
+	v2 := commit(t, s, key, "two", &v1.Version, s1, "B", "C")
+	v3 := commit(t, s, key, "three", &v2.Version, s2, "D")
+	if got := types(readAll(t, s, s1)); got != "A,B,C" {
+		t.Fatalf("after the move the first stream has %s, want A,B,C", got)
+	}
+	if got := strings.Join(markersOf(t, s, key), ","); got != s2 {
+		t.Fatalf("the markers that name the document: %q, want %s", got, s2)
+	}
+	s.Close(ctx(t))
+
+	s, _ = open(t, dir)
+	if got := types(readAll(t, s, s1)); got != "A,B,C" {
+		t.Fatalf("after a restart the first stream has %s, want A,B,C", got)
+	}
+	if got := types(readAll(t, s, s2)); got != "D" {
+		t.Fatalf("after a restart the second stream has %s, want D", got)
+	}
+	// A move back to the first stream keeps the events of both.
+	v4 := commit(t, s, key, "four", &v3.Version, s1, "E")
+	if r := v4.Cursors; len(r) != 1 || r[0] != "4" {
+		t.Fatalf("the cursors of the move back: %v", r)
+	}
+	if _, err := s.Delete(ctx(t), protocol.StateDeleteParams{Collection: "app-specs", Key: key, ExpectedVersion: v4.Version}); err != nil {
+		t.Fatal(err)
+	}
+	if got := markersOf(t, s, key); len(got) != 0 {
+		t.Fatalf("markers stay after the delete: %v", got)
+	}
+	s.Close(ctx(t))
+
+	s, _ = open(t, dir)
+	if got := types(readAll(t, s, s1)); got != "A,B,C,E" {
+		t.Fatalf("after the delete the first stream has %s, want A,B,C,E", got)
+	}
+	if got := types(readAll(t, s, s2)); got != "D" {
+		t.Fatalf("after the delete the second stream has %s, want D", got)
+	}
+}
+
+// A crash in the commit that moves a document to another stream: the first
+// stream keeps all its events, the second one loses only the events of the
+// stopped commit, and the next commit continues.
+func TestCommitCrashOnMove(t *testing.T) {
+	dir := t.TempDir()
+	s, _ := open(t, dir)
+	const key, s1, s2 = "r1:drop-spec", "spec:r1:one", "spec:r1:two"
+	appendN(t, s, s2, "before")
+	v1 := commit(t, s, key, "one", nil, s1, "A")
+	v2 := commit(t, s, key, "two", &v1.Version, s1, "B")
+
+	crashNextCommit(t)
+	if _, err := s.Commit(ctx(t), commitParams(key, "three", &v2.Version, s2, "C", "D")); err == nil {
+		t.Fatal("the crash hook did not stop the commit")
+	}
+	afterCommitAppend = nil
+	if n := lines(t, s, s2); n != 3 {
+		t.Fatalf("the second stream file has %d lines after the crash, want 3 (the append happened)", n)
+	}
+	s.Close(ctx(t))
+
+	s, _ = open(t, dir)
+	if got := types(readAll(t, s, s1)); got != "A,B" {
+		t.Fatalf("after the crash the first stream has %s, want A,B", got)
+	}
+	if got := types(readAll(t, s, s2)); got != "before" {
+		t.Fatalf("after the crash the second stream has %s, want before", got)
+	}
+	if g := get(t, s, key); g.Version != v2.Version {
+		t.Fatalf("after the crash the document is %+v, want the old one", g)
+	}
+	v3 := commit(t, s, key, "three", &v2.Version, s2, "C")
+	if got := types(readAll(t, s, s2)); got != "before,C" || v3.Cursors[0] != "2" {
+		t.Fatalf("the commit after the crash: %v, %s", v3.Cursors, got)
+	}
+	if got := types(readAll(t, s, s1)); got != "A,B" {
+		t.Fatalf("the first stream has %s, want A,B", got)
+	}
+}
+
+// A crash in a move leaves a marker on the new stream that names the
+// document, while the document still records the old stream. A delete of the
+// document settles that marker too: the events of the stopped commit go, and
+// the other events stay.
+func TestDeleteSettlesEveryMarker(t *testing.T) {
+	dir := t.TempDir()
+	s, _ := open(t, dir)
+	const key, s1, s2 = "r1:drop-spec", "spec:r1:one", "spec:r1:two"
+	appendN(t, s, s2, "before")
+	v1 := commit(t, s, key, "one", nil, s1, "A")
+	crashNextCommit(t)
+	if _, err := s.Commit(ctx(t), commitParams(key, "two", &v1.Version, s2, "B")); err == nil {
+		t.Fatal("the crash hook did not stop the commit")
+	}
+	afterCommitAppend = nil
+	if got := strings.Join(markersOf(t, s, key), ","); got != s2 {
+		t.Fatalf("the markers after the crash: %q, want %s", got, s2)
+	}
+	if _, err := s.Delete(ctx(t), protocol.StateDeleteParams{Collection: "app-specs", Key: key, ExpectedVersion: v1.Version}); err != nil {
+		t.Fatal(err)
+	}
+	if got := markersOf(t, s, key); len(got) != 0 {
+		t.Fatalf("markers stay after the delete: %v", got)
+	}
+	s.Close(ctx(t))
+	s, _ = open(t, dir)
+	if got := types(readAll(t, s, s1)); got != "A" {
+		t.Fatalf("the first stream has %s, want A", got)
+	}
+	if got := types(readAll(t, s, s2)); got != "before" {
+		t.Fatalf("the second stream has %s, want before", got)
+	}
+}
+
 // A commit wakes a wait on the document and a wait on the stream.
 func TestCommitWakesWaits(t *testing.T) {
 	s, _ := open(t, t.TempDir())

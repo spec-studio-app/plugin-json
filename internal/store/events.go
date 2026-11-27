@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -428,8 +429,41 @@ func (s *Store) streamLength(stream string) (int64, error) {
 	return f.total(), nil
 }
 
-// releaseStream removes the marker of a stream when it names the document.
-// The caller holds the lock of the document's collection.
+// releaseDoc settles each stream whose marker names the document, except
+// the stream keep (see releaseStream). The caller holds the lock of the
+// document's collection, so no new marker names the document during the
+// call. It takes one stream lock at a time.
+func (s *Store) releaseDoc(collection, key, keep string) error {
+	entries, err := os.ReadDir(s.eventsRoot())
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return unavailable("The plugin cannot read the events folder of its data folder (%s).", s.dir)
+	}
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || !strings.HasSuffix(name, markerExt) || len(name) <= len(markerExt) {
+			continue
+		}
+		m, err := readMarker(filepath.Join(s.eventsRoot(), name))
+		if err != nil {
+			return unavailable("The plugin cannot read the stream marker %s in its data folder. Correct or remove it.", name)
+		}
+		if m == nil || m.Collection != collection || m.Key != key || m.Stream == keep {
+			continue
+		}
+		if err := s.releaseStream(m.Stream, collection, key); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// releaseStream settles a stream whose marker names the document: it cuts
+// the stream back to its committed length (a commit that a crash stopped
+// goes), then removes the marker. After that, every event in the stream
+// stays. The caller holds the lock of the document's collection.
 func (s *Store) releaseStream(stream, collection, key string) error {
 	unlock, err := s.streamLock(stream)
 	if err != nil {
@@ -443,6 +477,9 @@ func (s *Store) releaseStream(stream, collection, key string) error {
 	}
 	if m == nil || m.Collection != collection || m.Key != key {
 		return nil
+	}
+	if _, err := s.loadStream(stream); err != nil {
+		return err
 	}
 	if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return unavailable("The plugin cannot remove the marker of the stream %s.", stream)

@@ -108,13 +108,12 @@ func (s *Store) Delete(ctx context.Context, p protocol.StateDeleteParams) (proto
 	if err := checkVersion(cur, &expected); err != nil {
 		return protocol.StateDeleteResult{}, named(err, p.Collection, p.Key)
 	}
-	// A commit wrote the document: the stream no longer has a committing
-	// document. Remove the stream's marker first, so a crash between the two
-	// steps cuts back no event.
-	if cur.Commit != nil {
-		if err := s.releaseStream(cur.Commit.Stream, p.Collection, p.Key); err != nil {
-			return protocol.StateDeleteResult{}, err
-		}
+	// A commit wrote the document: its streams no longer have a committing
+	// document. Remove each marker that names the document first (the
+	// stream of the last commit, and an older one that a crash left), so a
+	// crash between the two steps cuts back no committed event.
+	if err := s.releaseDoc(p.Collection, p.Key, ""); err != nil {
+		return protocol.StateDeleteResult{}, err
 	}
 	path := files.DocPath(s.stateRoot(), p.Collection, p.Key)
 	if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {

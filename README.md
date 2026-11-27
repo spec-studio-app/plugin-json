@@ -94,6 +94,8 @@ A document file has this shape:
 
 `commit` is in the file only after a `state.commit`. It is the stream of the last commit and the length of the stream after it. A `state.put` keeps it.
 
+When a document commits to another stream, the plugin first removes the marker of the old stream. A `state.delete` removes each marker that names the document. Thus the events that the document committed to a stream always stay.
+
 A line of a stream file has this shape:
 
 ```json
