@@ -74,7 +74,7 @@ A document file has this shape:
 }
 ```
 
-The name of a document file comes from its key. The characters `a-z 0-9 . _ -` stay. Each other character becomes `%XX` (its hex code). Thus `Ab` and `ab` are two files, also on a disk that ignores case. A name that is longer than 200 characters after this step becomes `h-<SHA-256 of the key>`. The plugin always reads the key from the file, not from the file name.
+The name of a document file comes from its key. The characters `a-z 0-9 . _ -` stay. Each other character becomes `%XX` (its hex code). Thus `Ab` and `ab` are two files, also on a disk that ignores case. A name that is longer than 200 characters after this step becomes `%h<SHA-256 of the key>`. No other name gives a file name that starts with `%h`. The plugin always reads the key from the file, not from the file name.
 
 A version is 16 random bytes in hex. The plugin never uses a version again for the same document.
 
@@ -86,7 +86,7 @@ The relay 0.6 and older keeps its data in its own JSON layout: `config.json`, `p
 
 When the plugin starts on a folder with the old files and with no `layout.json`, it imports the old files one time:
 
-1. It reads and checks each old file. When a file is not valid, the start stops with `unavailable`. The message names the file. Correct the file or remove it, then start the plugin again. The plugin changes no file in this case.
+1. It reads and checks each old file. When `config.json`, a spec file or a desk file is not valid, the start stops with `unavailable`. The message names the file. Correct the file or remove it, then start the plugin again. The plugin changes no file in this case. A `closed.json` or a `pair-code.json` that is not valid does not stop the start: the relay ignores these files too, and the import skips them.
 2. It copies the old files to `backup-relay-json-<time>/` in the data folder.
 3. It writes one document for each old record, with the names in section 14 of `PROTOCOL.md`.
 4. It writes `layout.json`. Then it removes the old files.
@@ -111,7 +111,7 @@ The attributes come from the same rules as in the relay:
 
 The relay writes the attributes again at its next write to each document.
 
-When two old spec files have the same repo key and slug (two deploy IDs in one folder), the file of the deploy ID in `config.json` wins. Else the file with the later last activity wins. The log line counts the files that the import did not use.
+The relay loads only the spec files and desk files of its own deploy ID. The import does the same with the deploy ID in `config.json`: it skips the files of another deploy ID. When no `config.json` exists and two spec files have the same repo key and slug, the file with the later last activity wins. The log line counts the files and records that the import did not use. They stay in the backup.
 
 To go back to an older relay, stop the relay. Then copy the files from the backup folder to the data folder and remove `layout.json` and `state/`.
 

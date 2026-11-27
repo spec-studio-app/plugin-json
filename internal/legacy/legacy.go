@@ -377,18 +377,15 @@ func readOld(dir string) ([]doc, int, error) {
 		value := compact(data)
 		if pc, err := os.ReadFile(filepath.Join(dir, oldPairCode)); err == nil {
 			var p pairCodeFile
-			if json.Unmarshal(pc, &p) != nil || p.Version != 1 || p.ID == nil || p.Hash == nil || p.ExpiresAt == nil {
-				return nil, 0, badFile(oldPairCode, "it is not a version-1 relay pair-code file")
-			}
-			if f.PairCodeID == nil || *f.PairCodeID != *p.ID {
+			// The relay counts a pair-code.json that does not parse as none.
+			valid := json.Unmarshal(pc, &p) == nil && p.Version == 1 && p.ID != nil && p.Hash != nil && p.ExpiresAt != nil
+			if valid && (f.PairCodeID == nil || *f.PairCodeID != *p.ID) {
 				v, err := applyPairCode(data, p)
 				if err != nil {
 					return nil, 0, badFile(oldConfig, "it is not a version-1 relay config file")
 				}
 				value = v
 			}
-		} else if !errors.Is(err, fs.ErrNotExist) {
-			return nil, 0, badFile(oldPairCode, "the plugin cannot read it")
 		}
 		docs = append(docs, doc{collection: "relay", key: "config", value: value, attrs: map[string]any{}, from: oldConfig})
 	} else if !errors.Is(err, fs.ErrNotExist) {
@@ -435,9 +432,15 @@ func readOld(dir string) ([]doc, int, error) {
 			deployID: f.State.DeployID,
 			last:     f.LastActivityAt,
 		}
+		// The relay loads only the files of its own deploy ID; the config
+		// holds it. Other files stay in the backup only.
+		if deployID != "" && d.deployID != deployID {
+			skipped++
+			continue
+		}
 		if old, ok := specs[key]; ok {
 			skipped++
-			if !better(d.deployID, d.last, old.deployID, old.last, deployID) {
+			if d.last <= old.last {
 				continue
 			}
 		}
@@ -485,11 +488,13 @@ func readOld(dir string) ([]doc, int, error) {
 			"pendingForMac":         f.State.pendingForMac(),
 			"pendingForCoordinator": f.State.pendingForCoordinator(),
 		}}, deployID: f.State.DeployID}
-		if old, ok := desks[key]; ok {
+		if deployID != "" && d.deployID != deployID {
 			skipped++
-			if old.deployID == deployID || d.deployID != deployID {
-				continue
-			}
+			continue
+		}
+		if _, ok := desks[key]; ok {
+			skipped++
+			continue
 		}
 		desks[key] = d
 	}
@@ -534,15 +539,6 @@ func readOld(dir string) ([]doc, int, error) {
 		}
 	}
 	return docs, skipped, nil
-}
-
-// better is true when a spec file wins over an earlier one with the same key:
-// the one of the config's deploy ID, else the later last activity.
-func better(id string, last float64, oldID string, oldLast float64, configID string) bool {
-	if configID != "" && (id == configID) != (oldID == configID) {
-		return id == configID
-	}
-	return last > oldLast
 }
 
 // applyPairCode sets state.pairCode and pairCodeId as the relay's

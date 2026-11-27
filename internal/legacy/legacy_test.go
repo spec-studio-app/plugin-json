@@ -389,3 +389,53 @@ func TestOldFilesIgnored(t *testing.T) {
 		t.Fatalf("log:\n%s", log.String())
 	}
 }
+
+// The import keeps only the spec and desk files of the config's deploy ID,
+// as the relay loads them; the others stay in the backup (review round 1).
+func TestOtherDeployIDSkipped(t *testing.T) {
+	dir := copyFixture(t)
+	specs, _ := filepath.Glob(filepath.Join(dir, "specs", "*.json"))
+	data, _ := os.ReadFile(specs[0])
+	var f map[string]any
+	json.Unmarshal(data, &f)
+	state := f["state"].(map[string]any)
+	spec := state["spec"].(map[string]any)
+	key := spec["repoKey"].(string) + ":" + spec["slug"].(string)
+	state["deployId"] = "old-deploy"
+	state["line"] = 999.0
+	f["lastActivityAt"] = 9e12
+	other, _ := json.Marshal(f)
+	os.WriteFile(filepath.Join(dir, "specs", "0000other.json"), other, 0o600)
+	s, log := mustOpen(t, dir)
+	got, err := s.Get(ctx(t), protocol.StateGetParams{Collection: "specs", Key: key})
+	if err != nil || !got.Exists || got.Attributes["deployId"] != "default" || strings.Contains(string(got.Value), "old-deploy") {
+		t.Fatalf("%s: %v %v", key, got.Attributes, err)
+	}
+	if !strings.Contains(log.String(), "skipped=1") {
+		t.Fatalf("log:\n%s", log.String())
+	}
+	backups, _ := filepath.Glob(filepath.Join(dir, legacy.BackupPrefix+"*", "specs", "0000other.json"))
+	if len(backups) != 1 {
+		t.Fatal("the skipped file is not in the backup")
+	}
+}
+
+// A pair-code.json that does not parse counts as none, as in the relay.
+func TestBadPairCodeIgnored(t *testing.T) {
+	dir := copyFixture(t)
+	os.WriteFile(filepath.Join(dir, "pair-code.json"), []byte("{bad"), 0o600)
+	s, log := mustOpen(t, dir)
+	if !strings.Contains(log.String(), "legacy_import") {
+		t.Fatal("no import")
+	}
+	got, _ := s.Get(ctx(t), protocol.StateGetParams{Collection: "relay", Key: "config"})
+	var v struct {
+		State struct {
+			PairCode any `json:"pairCode"`
+		} `json:"state"`
+	}
+	json.Unmarshal(got.Value, &v)
+	if v.State.PairCode != nil {
+		t.Fatalf("the bad pair code was applied: %v", v.State.PairCode)
+	}
+}
