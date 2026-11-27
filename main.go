@@ -21,7 +21,7 @@ func newPlugin() plugin.Plugin {
 		Settings: []protocol.Setting{{
 			Name: store.SettingDataDir,
 			Description: "The data folder. With no value: /data for the relay, " +
-				"<support folder>/backend/json for the app, and a new temporary folder for a test host.",
+				"<support folder>/backend/json for the app and the cli, and a new temporary folder for a test host.",
 		}},
 		Store: store.New(),
 	}

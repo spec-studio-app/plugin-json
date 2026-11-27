@@ -65,13 +65,14 @@ func (s *Store) stateRoot() string { return filepath.Join(s.dir, "state") }
 
 // DefaultDataDir gives the data folder for a host kind when the setting has
 // no value: /data for the relay (the relay's RELAY_DATA_DIR default), the
-// app's support folder for the app, and "" for a test host (a new temporary
+// app's support folder for the app and for the studio CLI (the CLI and the
+// app share one data folder), and "" for a test host (a new temporary
 // folder).
 func DefaultDataDir(kind string, getenv func(string) string, home func() (string, error)) (string, error) {
 	switch kind {
 	case "relay":
 		return "/data", nil
-	case "app":
+	case "app", "cli":
 		if support := getenv("SPEC_STUDIO_SUPPORT"); support != "" {
 			return filepath.Join(support, "backend", "json"), nil
 		}

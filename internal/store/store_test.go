@@ -33,6 +33,8 @@ func TestDefaultDataDir(t *testing.T) {
 		{"relay", withSupport, "/data"},
 		{"app", noEnv, "/Users/me/Library/Application Support/Spec Studio/backend/json"},
 		{"app", withSupport, "/tmp/test-support/backend/json"},
+		{"cli", noEnv, "/Users/me/Library/Application Support/Spec Studio/backend/json"},
+		{"cli", withSupport, "/tmp/test-support/backend/json"},
 		{"test", noEnv, ""},
 	}
 	for _, c := range cases {
@@ -65,6 +67,31 @@ func TestOpenUsesHostDefault(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(s.Dir(), "layout.json")); err != nil {
 		t.Fatalf("no layout.json: %v", err)
+	}
+}
+
+// The studio CLI (host kind cli) uses the app's data folder, not a
+// temporary one: its writes stay after Close.
+func TestOpenCLIUsesAppFolder(t *testing.T) {
+	support := t.TempDir()
+	s := New()
+	s.getenv = func(k string) string {
+		if k == "SPEC_STUDIO_SUPPORT" {
+			return support
+		}
+		return ""
+	}
+	if err := s.Open(ctx(t), plugin.OpenOptions{Settings: map[string]string{}, Host: protocol.Host{Kind: "cli"}, Log: slog.New(slog.DiscardHandler)}); err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(support, "backend", "json")
+	if s.Dir() != want {
+		t.Fatalf("dir %s, want %s", s.Dir(), want)
+	}
+	put(t, s, "specs", "x", "kept", nil, nil)
+	s.Close(context.Background())
+	if _, err := os.Stat(files.DocPath(filepath.Join(want, "state"), "specs", "x")); err != nil {
+		t.Fatalf("the write of the cli is gone after Close: %v", err)
 	}
 }
 

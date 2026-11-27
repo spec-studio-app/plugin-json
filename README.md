@@ -50,6 +50,7 @@ When `data_dir` has no value, the plugin uses the host kind from the handshake:
 |---|---|
 | `relay` | `/data`. This is the default of `RELAY_DATA_DIR` in the relay. |
 | `app` | `$SPEC_STUDIO_SUPPORT/backend/json` when the variable is set. Else `~/Library/Application Support/Spec Studio/backend/json`. |
+| `cli` | The same folder as `app`. The `studio` CLI and the app use one data folder. |
 | `test` | A new temporary folder. The plugin removes it at shutdown. |
 
 The plugin makes the folder when it does not exist. When the plugin cannot write to the folder, the handshake fails with `bad_settings`. Give the plugin's user write access to the folder, or set `data_dir` to another folder.
