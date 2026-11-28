@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"strconv"
 	"sync"
 	"time"
 
@@ -13,7 +14,8 @@ import (
 // another process on the same data folder.
 var PollInterval = 250 * time.Millisecond
 
-// hub wakes the waits of a document when this process changes it.
+// hub wakes the waits of a document or a stream when this process changes
+// it. A stream has the collection "", which no document has.
 type hub struct {
 	mu     sync.Mutex
 	chans  map[string]chan struct{}
@@ -55,10 +57,11 @@ func (h *hub) closeAll() { h.once.Do(func() { close(h.closed) }) }
 
 // Wait ends when the stored version of the document is not the version of
 // the host: at once, at a change in this process, at a change from another
-// process (seen by a check of the file), or when ctx ends.
+// process (seen by a check of the file), or when ctx ends. A wait on a
+// stream ends when the stream has an event after the host's cursor.
 func (s *Store) Wait(ctx context.Context, p protocol.WatchWaitParams) (protocol.WatchWaitResult, error) {
 	if p.IsStream() {
-		return protocol.WatchWaitResult{}, protocol.NewError(protocol.Refused, "The plugin json gives no events, so it cannot wait on a stream.")
+		return s.waitStream(ctx, p)
 	}
 	path := files.DocPath(s.stateRoot(), p.Collection, p.Key)
 	tick := time.NewTicker(PollInterval)
@@ -77,6 +80,40 @@ func (s *Store) Wait(ctx context.Context, p protocol.WatchWaitParams) (protocol.
 		}
 		if differs(cur, p.Version) {
 			return protocol.WatchWaitResult{Changed: true, Version: cur}, nil
+		}
+		select {
+		case <-ctx.Done():
+			return protocol.WatchWaitResult{}, ctx.Err()
+		case <-s.waiters.closed:
+			return protocol.WatchWaitResult{}, nil
+		case <-changed:
+		case <-tick.C:
+		}
+	}
+}
+
+// waitStream ends when the stream's length is more than the cursor of the
+// host, and gives the cursor of the last event.
+func (s *Store) waitStream(ctx context.Context, p protocol.WatchWaitParams) (protocol.WatchWaitResult, error) {
+	var after int64
+	if p.After != nil && *p.After != "" {
+		n, err := parseCursor(*p.After)
+		if err != nil {
+			return protocol.WatchWaitResult{}, err
+		}
+		after = n
+	}
+	tick := time.NewTicker(PollInterval)
+	defer tick.Stop()
+	for {
+		changed := s.waiters.channel("", p.Stream)
+		n, err := s.streamLength(p.Stream)
+		if err != nil {
+			return protocol.WatchWaitResult{}, err
+		}
+		if n > after {
+			c := strconv.FormatInt(n, 10)
+			return protocol.WatchWaitResult{Changed: true, Cursor: &c}, nil
 		}
 		select {
 		case <-ctx.Done():

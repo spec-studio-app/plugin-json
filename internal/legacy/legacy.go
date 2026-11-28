@@ -171,7 +171,7 @@ func run(dir string, layout []byte) (Result, error) {
 	// 4. Write the documents in .import/state, then move it to state.
 	staging := filepath.Join(dir, ".import", "state")
 	for _, d := range docs {
-		if _, err := files.WriteDoc(staging, d.collection, d.key, d.value, d.attrs); err != nil {
+		if _, err := files.WriteDoc(staging, d.collection, d.key, d.value, d.attrs, nil); err != nil {
 			return res, unavailable("The plugin cannot write the imported document %s / %s.", d.collection, d.key)
 		}
 	}

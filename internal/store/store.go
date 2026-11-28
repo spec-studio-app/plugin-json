@@ -1,5 +1,6 @@
 // Package store is the storage of plugin-json: documents as JSON files,
-// blobs as files named by SHA-256, and waits on documents, in one data folder.
+// streams of events as JSON Lines files, blobs as files named by SHA-256,
+// and waits on documents and streams, in one data folder.
 package store
 
 import (
@@ -28,20 +29,30 @@ type Layout struct {
 }
 
 // LayoutName and LayoutVersion are the layout that this plugin writes.
+//
+// Version 1: documents and blobs. Version 2 adds the events/ folder (stream
+// files and stream markers) and the "commit" field of a document. A plugin
+// that knows only version 1 would rewrite a document without its "commit"
+// field, and the next read of its stream would then cut back committed
+// events. So a plugin refuses a folder with a newer version than its own.
+// A version 1 folder has no events and no markers: the plugin upgrades it
+// when it writes the new layout.json, with no other change.
 const (
 	LayoutName    = "plugin-json"
-	LayoutVersion = 1
+	LayoutVersion = 2
 )
 
-// Store is the plugin's store. It implements plugin.Store, plugin.BlobStore,
-// plugin.Watcher and plugin.Durable.
+// Store is the plugin's store. It implements plugin.Store,
+// plugin.EventStore, plugin.Committer, plugin.BlobStore, plugin.Watcher,
+// plugin.StoreIdentity and plugin.Durable.
 type Store struct {
-	dir     string
-	temp    bool
-	log     *slog.Logger
-	mu      sync.Mutex
-	locks   map[string]*sync.Mutex
-	waiters *hub
+	dir         string
+	temp        bool
+	log         *slog.Logger
+	mu          sync.Mutex
+	locks       map[string]*sync.Mutex
+	streamLocks map[string]*sync.Mutex
+	waiters     *hub
 	// getenv and home are for the tests of the default data folder.
 	getenv func(string) string
 	home   func() (string, error)
@@ -49,7 +60,7 @@ type Store struct {
 
 // New makes a store. The SDK calls Open at the first handshake.
 func New() *Store {
-	return &Store{locks: map[string]*sync.Mutex{}, waiters: newHub(), getenv: os.Getenv, home: os.UserHomeDir}
+	return &Store{locks: map[string]*sync.Mutex{}, streamLocks: map[string]*sync.Mutex{}, waiters: newHub(), getenv: os.Getenv, home: os.UserHomeDir}
 }
 
 // Durable is true: the data stays after the plugin stops.
@@ -62,13 +73,14 @@ func (s *Store) stateRoot() string { return filepath.Join(s.dir, "state") }
 
 // DefaultDataDir gives the data folder for a host kind when the setting has
 // no value: /data for the relay (the relay's RELAY_DATA_DIR default), the
-// app's support folder for the app, and "" for a test host (a new temporary
+// app's support folder for the app and for the studio CLI (the CLI and the
+// app share one data folder), and "" for a test host (a new temporary
 // folder).
 func DefaultDataDir(kind string, getenv func(string) string, home func() (string, error)) (string, error) {
 	switch kind {
 	case "relay":
 		return "/data", nil
-	case "app":
+	case "app", "cli":
 		if support := getenv("SPEC_STUDIO_SUPPORT"); support != "" {
 			return filepath.Join(support, "backend", "json"), nil
 		}
@@ -88,8 +100,10 @@ func dataDirError(dir string) error {
 }
 
 // Open finds the data folder, checks that it takes a write, imports the
-// relay's old JSON store when the folder has one, and removes the temporary
-// files that a crash left.
+// relay's old JSON store when the folder has one, upgrades an older layout
+// version, removes the temporary
+// files that a crash left, and cuts back the events of a commit that a crash
+// stopped.
 func (s *Store) Open(ctx context.Context, o plugin.OpenOptions) (err error) {
 	s.temp, s.dir = false, ""
 	s.log = o.Log
@@ -160,6 +174,13 @@ func (s *Store) prepare() error {
 		if legacy.HasOld(s.dir) {
 			s.log.Info("legacy_files_ignored", "reason", "the data folder has the plugin layout already")
 		}
+		if l.Version < LayoutVersion {
+			layout, _ := json.Marshal(Layout{Layout: LayoutName, Version: LayoutVersion})
+			if err := files.WriteAtomic(layoutPath, layout); err != nil {
+				return protocol.NewError(protocol.Unavailable, "The plugin cannot write layout.json in the data folder (%s). Check the access of the data folder.", s.dir)
+			}
+			s.log.Info("layout_upgraded", "from", l.Version, "to", LayoutVersion)
+		}
 	case errors.Is(err, fs.ErrNotExist):
 		layout, _ := json.Marshal(Layout{Layout: LayoutName, Version: LayoutVersion})
 		if err := legacy.Import(s.dir, s.log, layout); err != nil {
@@ -174,7 +195,10 @@ func (s *Store) prepare() error {
 	if err := files.SweepTemps(filepath.Join(s.dir, "blobs")); err != nil {
 		return protocol.NewError(protocol.Unavailable, "The plugin cannot clean the temporary files in its data folder (%s).", s.dir)
 	}
-	return nil
+	if err := files.SweepTemps(s.eventsRoot()); err != nil {
+		return protocol.NewError(protocol.Unavailable, "The plugin cannot clean the temporary files in its data folder (%s).", s.dir)
+	}
+	return s.recoverStreams()
 }
 
 // Close ends the waits. A temporary data folder of a test host goes away.

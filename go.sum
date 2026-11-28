@@ -1,2 +1,4 @@
 github.com/spec-studio-app/plugin-sdk/go v0.0.0-20261127171812-06ceb589c493 h1:XT5WqXQuFLlulk7rk+5FY0CLx4WAA+GquY63v1B9sUY=
 github.com/spec-studio-app/plugin-sdk/go v0.0.0-20261127171812-06ceb589c493/go.mod h1:+fwYppWzMFbOes50DFnRLepSihAE8xi0RtX6YY5wFGw=
+github.com/spec-studio-app/plugin-sdk/go v0.0.0-20261127193412-ed507a40b3c5 h1:13dpilc5iYn8wms07aWbf8posO+Z3ZMKbyVaADuHLEY=
+github.com/spec-studio-app/plugin-sdk/go v0.0.0-20261127193412-ed507a40b3c5/go.mod h1:+fwYppWzMFbOes50DFnRLepSihAE8xi0RtX6YY5wFGw=

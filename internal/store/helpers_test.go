@@ -56,8 +56,16 @@ func open(t *testing.T, dir string) (*Store, *logBuffer) {
 }
 
 // serve serves a store on dir over an in-process stdio pipe, with the SDK,
-// and does the handshake.
+// and does the handshake with protocol 1.0.
 func serve(t *testing.T, dir string) (*client.Client, *logBuffer) {
+	t.Helper()
+	c, log, _ := serveVersions(t, dir, "1.0")
+	return c, log
+}
+
+// serveVersions is serve with the protocol versions of the host. It also
+// gives the result of the handshake.
+func serveVersions(t *testing.T, dir string, versions ...string) (*client.Client, *logBuffer, protocol.HandshakeResult) {
 	t.Helper()
 	inR, inW := io.Pipe()
 	outR, outW := io.Pipe()
@@ -78,15 +86,15 @@ func serve(t *testing.T, dir string) (*client.Client, *logBuffer) {
 		inW.Close()
 		<-done
 	})
-	_, err := c.Handshake(ctx(t), protocol.HandshakeParams{
+	h, err := c.Handshake(ctx(t), protocol.HandshakeParams{
 		Host:             protocol.Host{Kind: "relay", Version: "0.6.0"},
-		ProtocolVersions: []string{"1.0"},
+		ProtocolVersions: versions,
 		Settings:         map[string]string{SettingDataDir: dir},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return c, stderr
+	return c, stderr, h
 }
 
 func raw(v any) json.RawMessage {

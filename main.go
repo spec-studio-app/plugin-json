@@ -1,5 +1,5 @@
 // Command plugin-json is the JSON-file backend plugin of Spec Studio. It
-// keeps a host's documents and blobs as files in one data folder. See
+// keeps a host's documents, events and blobs as files in one data folder. See
 // README.md and https://github.com/spec-studio-app/plugin-sdk.
 package main
 
@@ -21,7 +21,7 @@ func newPlugin() plugin.Plugin {
 		Settings: []protocol.Setting{{
 			Name: store.SettingDataDir,
 			Description: "The data folder. With no value: /data for the relay, " +
-				"<support folder>/backend/json for the app, and a new temporary folder for a test host.",
+				"<support folder>/backend/json for the app and the cli, and a new temporary folder for a test host.",
 		}},
 		Store: store.New(),
 	}
